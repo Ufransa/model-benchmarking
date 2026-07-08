@@ -5,20 +5,22 @@
 
 ## Contexto
 
-Hemos ejecutado 363 evaluaciones automáticas (11 modelos × 11 tareas × 3 runs) sobre cuatro stacks:
+Hemos ejecutado evaluaciones automáticas sobre combinaciones de modelo + harness
+(`raw_api`, `omp`, `opencode`, `hermes`) y 11 tareas sobre cuatro stacks:
 Spring Boot, Angular, React y Datos (Chinook SQLite).
 
 La capa automática mide si el código **compila y pasa los tests**. Esta revisión humana mide
 **calidad, idiomaticidad y seguridad** — dimensiones que los tests no capturan.
 
-Los modelos están **anonimizados como Modelo A–K**. No intentes deducir cuál es cuál
-hasta que se revele el mapping al final.
+Los modelos están **anonimizados como Modelo A–K**. La columna `harness` identifica
+el arnés que generó la respuesta. No intentes deducir el modelo real hasta que se revele
+el mapping al final.
 
 ---
 
 ## Tu rol como revisor
 
-1. Leer la respuesta del modelo en el archivo `_raw_response.txt` indicado.
+1. Leer la respuesta/transcript en el archivo `_raw_response.txt` indicado.
 2. Puntuar en los 5 ejes de la rúbrica (escala 1–5).
 3. Registrar la puntuación en `plantilla_puntuacion.csv`.
 4. **No consultes** a otros revisores hasta que ambos hayáis terminado vuestra hoja.
@@ -46,9 +48,9 @@ hasta que se revele el mapping al final.
 
 ### Paso 2 — Revisión
 Para cada fila de tu copia:
-1. Abre la ruta en la columna `archivo_respuesta` (está bajo `poc-run/results/`).
-2. Lee el diff generado: ¿qué cambió respecto al fichero original?
-3. Puntúa los 5 ejes. Si el test automático falló (`test_ok=False`), descuenta en eje 1.
+1. Abre la ruta en la columna `archivo_respuesta`.
+2. Lee la respuesta cruda o el transcript con los ficheros finales cambiados.
+3. Puntúa los 5 ejes. Si el estado automático justo falló (`test_ok_auto=False` o `fair_status` distinto de `pass` / `posthoc_rescore_pass`), descuenta en eje 1. No uses filas excluidas por infraestructura para juzgar calidad del modelo.
 4. Añade notas libres en la columna `comentarios`.
 
 ### Paso 3 — Reconciliación (dos revisores por tarea)
@@ -58,7 +60,7 @@ Para cada fila de tu copia:
 
 ### Paso 4 — Revelación del mapping
 - Solo cuando `plantilla_puntuacion_FINAL.csv` esté completo, abre `results/model_mapping.csv`.
-- Ese fichero dice qué modelo real corresponde a A, B y C.
+- Ese fichero dice qué modelo real corresponde a cada alias.
 - **No lo abras antes.** El doble ciego es lo que da validez al resultado.
 
 ### Paso 5 — Interpretación
@@ -93,4 +95,5 @@ de adopción.
 - Las tareas de Angular se verifican **solo con build** (los tests Vitest tienen un problema
   de compatibilidad con zone.js en este entorno). El build en verde es condición necesaria
   pero no suficiente — el eje 1 requiere criterio humano.
-- El fichero `model_mapping.csv` está en `poc-run/results/`. Guárdalo bajo llave hasta el final.
+- La plantilla actual se genera desde `results/full_combined_v3/metrics_fair.csv` y debe traer `automatic_source`, `fair_status` y `fair_included`.
+- El fichero `model_mapping.csv` está en `results/full_combined_v3/`. Guárdalo bajo llave hasta el final.

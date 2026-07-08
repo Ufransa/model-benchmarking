@@ -25,30 +25,33 @@ Luego lee este fichero entero antes de hacer nada.
 ## Estado del proyecto
 
 ### Ya completado
-- **3 modelos originales evaluados** con 11 tareas × 3 runs = 99 evaluaciones automáticas
-- Resultados en `results/metrics_all.csv`
-- Materiales de revisión humana en `human_review/`
+- `results/full_combined_v3/metrics_all.csv` conserva 396 filas brutas/auditables de la tanda combinada (`raw_api`, `omp`, `opencode`, `hermes`) para tres modelos canónicos.
+- `results/full_combined_v3/metrics_fair.csv` es la tabla automática justa tras auditoría/rescore: 275 filas puntuables, 121 exclusiones de infraestructura y 250/275 tests verdes.
+- `results/full_combined_v3/fair_comparison_summary.md` resume la comparación automática actual desde `metrics_fair.csv`; incluye intervalos Wilson 95%, avisos `low_n` y gaps de telemetría/coste. Úsalo para % tests verdes, no `metrics_all.csv`.
+- `results/full_combined_v3/fair_failure_evidence.md` indexa los 25 fallos puntuables; `infra_remediation_report.md` resume las 121 exclusiones de infraestructura y cómo remediarlas antes de una rerun.
+- Materiales de revisión humana en `human_review/` regenerados desde `metrics_fair.csv` como snapshot ciego; regenerar si se puntúan nuevos harnesses.
 - Presentación ejecutiva en `presentacion.html`
+- Runner central con adapters `raw_api`, `omp`, `opencode`, `hermes`
+- Runbook operativo en `RUNBOOK.md`
 
 ### Pendiente de ejecutar
-- **5 modelos nuevos** ya añadidos a todos los harnesses, pero faltan sus runs:
-  - `qwen/qwen3.7-plus` ($0.32/$1.28)
-  - `google/gemini-3.1-flash-lite` ($0.25/$1.50)
-  - `qwen/qwen3-coder-next` ($0.11/$0.80)
-  - `tencent/hy3-preview` ($0.066/$0.26) — necesita max_tokens >= 200
-  - `z-ai/glm-5.2` ($1.20/$4.10) — necesita max_tokens >= 200
+- No rerun automático pendiente para interpretar `full_combined_v3`. Si se añaden nuevas tandas, fusiona, audita/rescorea si procede, y regenera la comparación justa antes de revisión humana.
 
 ---
 
 ## Setup completo desde cero
 
-### Paso 1 — API key
+### Paso 1 — API keys
 
-Crea el fichero `openrouter_key.txt` en la raíz del repo con tu key de OpenRouter:
+El runner carga `.env` desde la raíz del repo antes de invocar tests, builds o CLIs:
+```dotenv
+OPENROUTER_API_KEY=sk-or-v1-TUKEY
+OPENCODE_API_KEY=opencode-go-key
+BENCHMARK_MODELS=opencode-go/deepseek-v4-flash
 ```
-sk-or-v1-TUKEY
-```
-Este fichero está en `.gitignore` — nunca se commitea.
+
+También acepta los ficheros legacy `openrouter_key.txt` y `opencode_key.txt`.
+`.env` y esos ficheros están en `.gitignore` — nunca se commitean.
 
 ### Paso 2 — Dependencias Python
 
@@ -187,23 +190,31 @@ CI=true npm test -- --watchAll=false  # deben pasar los tests existentes
 
 ---
 
-## Ejecutar los modelos nuevos
+## Ejecutar modelos o harnesses
 
-Con los baselines configurados, lanza los harnesses:
+Con los baselines configurados:
 
 ```bash
-# Verifica primero que los slugs responden
+# Verifica primero que los slugs OpenRouter responden
 python test_slugs.py
 
-# Lanza los 4 harnesses en paralelo (abre 4 ventanas cmd en Windows)
+# Legacy raw API: lanza los 4 stacks en paralelo
 python run_all.py
+
+# Harness benchmark: todos los modelos OpenCode Go en OMP, OpenCode y Hermes
+python run_benchmark.py \
+  --stack all \
+  --harness agent \
+  --models opencode-go \
+  --runs 3
 
 # Cuando terminen, consolida los resultados
 python merge_metrics.py
 ```
 
-Los harnesses usan modo **append**: las filas de los 3 modelos originales ya están en los CSV,
-solo añadirán las de los 5 modelos nuevos.
+El runner central usa modo **resume** por defecto: no repite filas ya completadas con la
+clave `(harness, task, model, run)`. Los CSV incluyen `capability_mode` (`single_shot`/`agent_iterated`), `telemetry_trust` (`exact`/`parsed`/`blank`), `tool_set`, `model_calls` y `telemetry_note`: `raw_api` registra 1 llamada OpenRouter con `telemetry_trust=exact`; `omp`/`opencode` rellenan tokens/coste/llamadas desde JSON (`parsed`); `hermes` queda marcado como `blank`. Coste y tokens solo son comparables dentro de cohortes que comparten ambos `capability_mode` y `telemetry_trust` (ADR-0002).
+El backlog técnico vive en `docs/backlog.md`; los items abiertos son: (1) capturar telemetry real de Hermes desde una fuente machine-readable; (2) implementar colas de concurrencia por harness (ADR-0001).
 
 ---
 
@@ -231,28 +242,39 @@ model-benchmarking/
 ├── CONTEXT_PROMPT.md             ← Este fichero
 ├── openrouter_key.txt.example    ← Plantilla — crea openrouter_key.txt con tu key real
 │
-├── run_springboot.py             ← Harness Spring Boot
-├── run_angular.py                ← Harness Angular
-├── run_react.py                  ← Harness React
-├── run_data.py                   ← Harness Datos
-├── run_all.py                    ← Lanza los 4 en paralelo (Windows)
-├── merge_metrics.py              ← Fusiona CSVs → metrics_all + anon + mapping
-├── test_slugs.py                 ← Verifica que los slugs de OpenRouter funcionan
+├── run_benchmark.py               ← Runner central (`raw_api`, `omp`, `opencode`, `hermes`)
+├── benchmark/                     ← Tareas, adapters, workdirs y checks
+├── run_springboot.py              ← Wrapper legacy Spring Boot vía raw_api
+├── run_angular.py                 ← Wrapper legacy Angular vía raw_api
+├── run_react.py                   ← Wrapper legacy React vía raw_api
+├── run_data.py                    ← Wrapper legacy Datos vía raw_api
+├── run_all.py                     ← Lanza los 4 stacks en paralelo
+├── merge_metrics.py               ← Fusiona CSVs con columna harness
+├── audit_results.py               ← Clasifica fallos guardados sin invocar modelos
+├── rescore_results.py             ← Rescore local solo desde transcripts guardados
+├── generate_fair_comparison.py     ← Genera resumen/CSVs desde metrics_fair.csv
+├── gen_plantilla.py               ← Genera revisión humana desde metrics_fair.csv por defecto
+├── gen_form_data.py               ← Propaga fair_status/test_ok_auto a Google Forms
+├── test_slugs.py                  ← Verifica que los slugs de OpenRouter funcionan
 │
 ├── baselines/data-chinook/       ← EN EL REPO: Chinook SQLite + scripts Python
 │   (petclinic, angular, react)   ← NO EN EL REPO: ver pasos 4-6 arriba
 │
 ├── human_review/
 │   ├── instrucciones.md          ← Protocolo para revisores humanos
-│   ├── plantilla_puntuacion.csv  ← 33 filas vacías para puntuar (sin mapping)
+│   ├── plantilla_puntuacion.csv  ← Filas por (modelo, harness, tarea)
 │   └── prompt_resultado_final.md ← Prompt LLM para calcular puntuación combinada
 │
 └── results/
-    ├── metrics_all.csv           ← Consolidado de los 3 modelos originales
-    ├── metrics_anon.csv          ← Igual con Modelo A/B/C (para revisión ciega)
+    ├── metrics_all.csv           ← Consolidado bruto/auditable por stack/harness/modelo
+    ├── metrics_fair.csv          ← Tabla justa para calidad automática
+    ├── fair_comparison_summary.md ← Resumen legible desde metrics_fair.csv
+    ├── fair_failure_evidence.md  ← Evidencia de fallos puntuables
+    ├── infra_remediation_report.md ← Remediación de exclusiones infra
+    ├── metrics_anon.csv          ← Igual con aliases Modelo A/B/C
     ├── model_mapping.csv         ← Mapping real — NO abrir hasta final de revisión
-    └── <task>__<model>__r<n>/
-        └── _raw_response.txt     ← Respuesta cruda de cada run (para revisores)
+    └── <harness>__<task>__<model>__r<n>/
+        └── _raw_response.txt     ← Respuesta cruda o transcript + cambios finales
 ```
 
 ---
@@ -260,7 +282,9 @@ model-benchmarking/
 ## Próximos pasos sugeridos
 
 1. Configurar baselines según pasos 4-6 (si quieres re-ejecutar el harness)
-2. Ejecutar los 5 modelos nuevos: `python run_all.py`
+2. Ejecutar raw API (`python run_all.py`) o agentes (`python run_benchmark.py --harness omp,opencode,hermes ...`)
 3. Consolidar: `python merge_metrics.py`
-4. Iniciar revisión humana: `human_review/instrucciones.md`
-5. Calcular puntuación final: `human_review/prompt_resultado_final.md`
+4. Si el resultado parece bajo o hubo infra, ejecutar `python audit_results.py --results-dir results/full_combined_v3`, `python rescore_results.py --results-dir results/full_combined_v3`, y `python generate_fair_comparison.py --results-dir results/full_combined_v3`.
+5. Regenerar revisión humana desde la tabla justa: `python gen_plantilla.py --results-dir results/full_combined_v3 && python gen_form_data.py`.
+6. Iniciar revisión humana usando `metrics_fair.csv` / `fair_comparison_summary.md` para la capa automática: `human_review/instrucciones.md`
+7. Calcular puntuación final: `human_review/prompt_resultado_final.md`

@@ -1,5 +1,9 @@
 # API key — nunca committear
 openrouter_key.txt
+opencode_key.txt
+.env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -23,6 +27,8 @@ target/
 .idea/
 .vscode/
 *.iml
+.serena/
+.cursor/
 
 # OS
 .DS_Store
@@ -42,6 +48,9 @@ results/ng-*/
 results/re-*/
 results/data-*/
 
+# Seeded task snapshots used to clone per-run workdirs.
+.benchmark-cache/
+
 # ── Baselines con node_modules y .git anidados ───────────────────────────────
 baselines/angular-conduit/
 baselines/react-conduit/
@@ -56,3 +65,4 @@ results/model_mapping.csv
 human_review/VEREDICTO.md
 # Temporal de análisis
 results/_verdict_data.json
+results
